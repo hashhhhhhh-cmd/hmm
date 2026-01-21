@@ -1,0 +1,385 @@
+-- Visual Module (ESP) - Host on GitHub
+-- This creates the UI for the Visual tab
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local VisualModule = {}
+VisualModule.Settings = {
+    Enabled = false,
+    Box = false,
+    Name = false,
+    Type = false,
+    TeamCheck = false,
+    Health = false
+}
+
+local ESPObjects = {}
+local lastUpdateTime = 0
+local espUpdateConnection = nil
+local checkboxStates = {}
+local espToggleButton = nil
+
+local function getPlayerType(character)
+    local tools = {"Bomb", "GravediggerPickaxe", "GladiatorsSword", "Cannon", "HuntersBow", "HuntersPunch", "Dynamite"}
+    local typeMap = {
+        Bomb = "Bomber",
+        GravediggerPickaxe = "Gravedigger",
+        GladiatorsSword = "Gladiator",
+        Cannon = "Cannoner",
+        HuntersBow = "Hunter",
+        HuntersPunch = "Hunter",
+        Dynamite = "Rusher"
+    }
+    
+    for _, toolName in ipairs(tools) do
+        if character:FindFirstChild(toolName) then
+            return typeMap[toolName]
+        end
+    end
+    return "None"
+end
+
+local function hideESP(player)
+    if not ESPObjects[player] then return end
+    local folder = ESPObjects[player].folder
+    if not folder then return end
+    
+    for _, child in pairs(folder:GetChildren()) do
+        if child:IsA("GuiObject") or child:IsA("BoxHandleAdornment") or child:IsA("BillboardGui") then
+            child.Visible = false
+        end
+    end
+end
+
+local function createESP(player)
+    if player == Players.LocalPlayer then return end
+    if ESPObjects[player] then return end
+    
+    local espFolder = Instance.new("Folder")
+    espFolder.Name = "ESP_" .. player.Name
+    espFolder.Parent = CoreGui
+    
+    ESPObjects[player] = {folder = espFolder}
+end
+
+local function updateESP(player)
+    if not ESPObjects[player] then return end
+    if not VisualModule.Settings.Enabled then 
+        hideESP(player)
+        return 
+    end
+    
+    local character = player.Character
+    if not character then 
+        hideESP(player)
+        return 
+    end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not hrp or not humanoid then 
+        hideESP(player)
+        return 
+    end
+    
+    local espFolder = ESPObjects[player].folder
+    if not espFolder then return end
+    
+    if VisualModule.Settings.TeamCheck and player.Team and Players.LocalPlayer.Team and player.Team == Players.LocalPlayer.Team then
+        hideESP(player)
+        return
+    end
+    
+    local box = espFolder:FindFirstChild("Box")
+    if VisualModule.Settings.Box then
+        if not box then
+            box = Instance.new("BoxHandleAdornment")
+            box.Name = "Box"
+            box.AlwaysOnTop = true
+            box.ZIndex = 1
+            box.Parent = espFolder
+        end
+        box.Size = character:GetExtentsSize()
+        box.Adornee = hrp
+        box.Color3 = Color3.fromRGB(255, 0, 0)
+        box.Transparency = 0.5
+        box.Visible = true
+    else
+        if box then box.Visible = false end
+    end
+    
+    local nameLabel = espFolder:FindFirstChild("NameLabel")
+    if VisualModule.Settings.Name then
+        if not nameLabel then
+            nameLabel = Instance.new("BillboardGui")
+            nameLabel.Name = "NameLabel"
+            nameLabel.Size = UDim2.new(0, 200, 0, 50)
+            nameLabel.StudsOffset = Vector3.new(0, 3, 0)
+            nameLabel.AlwaysOnTop = true
+            nameLabel.Parent = espFolder
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Name = "Text"
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.TextSize = 14
+            textLabel.Parent = nameLabel
+        end
+        nameLabel.Adornee = hrp
+        local textLabel = nameLabel:FindFirstChild("Text")
+        if textLabel then textLabel.Text = player.Name end
+        nameLabel.Visible = true
+    else
+        if nameLabel then nameLabel.Visible = false end
+    end
+    
+    local typeLabel = espFolder:FindFirstChild("TypeLabel")
+    if VisualModule.Settings.Type then
+        if not typeLabel then
+            typeLabel = Instance.new("BillboardGui")
+            typeLabel.Name = "TypeLabel"
+            typeLabel.Size = UDim2.new(0, 200, 0, 50)
+            typeLabel.StudsOffset = Vector3.new(0, 2, 0)
+            typeLabel.AlwaysOnTop = true
+            typeLabel.Parent = espFolder
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Name = "Text"
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.TextSize = 12
+            textLabel.Parent = typeLabel
+        end
+        typeLabel.Adornee = hrp
+        local textLabel = typeLabel:FindFirstChild("Text")
+        if textLabel then textLabel.Text = getPlayerType(character) end
+        typeLabel.Visible = true
+    else
+        if typeLabel then typeLabel.Visible = false end
+    end
+    
+    local healthLabel = espFolder:FindFirstChild("HealthLabel")
+    if VisualModule.Settings.Health then
+        if not healthLabel then
+            healthLabel = Instance.new("BillboardGui")
+            healthLabel.Name = "HealthLabel"
+            healthLabel.Size = UDim2.new(0, 200, 0, 50)
+            healthLabel.StudsOffset = Vector3.new(0, 1, 0)
+            healthLabel.AlwaysOnTop = true
+            healthLabel.Parent = espFolder
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Name = "Text"
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            textLabel.TextStrokeTransparency = 0.5
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.TextSize = 12
+            textLabel.Parent = healthLabel
+        end
+        healthLabel.Adornee = hrp
+        local textLabel = healthLabel:FindFirstChild("Text")
+        if textLabel then textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) end
+        healthLabel.Visible = true
+    else
+        if healthLabel then healthLabel.Visible = false end
+    end
+end
+
+local function updateAllESP()
+    local currentTime = tick()
+    if currentTime - lastUpdateTime < 10 then return end
+    lastUpdateTime = currentTime
+    
+    for player, data in pairs(ESPObjects) do
+        if not Players:FindFirstChild(player.Name) then
+            if data.folder then data.folder:Destroy() end
+            ESPObjects[player] = nil
+        else
+            pcall(function() updateESP(player) end)
+        end
+    end
+end
+
+local function toggleESP(enabled)
+    VisualModule.Settings.Enabled = enabled
+    
+    if enabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= Players.LocalPlayer then
+                createESP(player)
+                pcall(function() updateESP(player) end)
+            end
+        end
+        
+        if not espUpdateConnection then
+            espUpdateConnection = RunService.Heartbeat:Connect(function()
+                pcall(updateAllESP)
+            end)
+        end
+    else
+        for player, data in pairs(ESPObjects) do
+            hideESP(player)
+        end
+        
+        if espUpdateConnection then
+            espUpdateConnection:Disconnect()
+            espUpdateConnection = nil
+        end
+    end
+end
+
+function VisualModule.CreateUI(parent)
+    local visualContent = Instance.new("ScrollingFrame")
+    visualContent.Name = "VisualContent"
+    visualContent.Size = UDim2.new(1, -20, 1, -20)
+    visualContent.Position = UDim2.new(0, 10, 0, 10)
+    visualContent.BackgroundTransparency = 1
+    visualContent.BorderSizePixel = 0
+    visualContent.ScrollBarThickness = 4
+    visualContent.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+    visualContent.Parent = parent
+    
+    local function createCheckbox(name, settingKey, yPos)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -20, 0, 30)
+        container.Position = UDim2.new(0, 10, 0, yPos)
+        container.BackgroundTransparency = 1
+        container.Parent = visualContent
+        
+        local checkbox = Instance.new("TextButton")
+        checkbox.Size = UDim2.new(0, 20, 0, 20)
+        checkbox.Position = UDim2.new(0, 0, 0, 5)
+        checkbox.BackgroundColor3 = Color3.fromRGB(124, 124, 124)
+        checkbox.BackgroundTransparency = 0.3
+        checkbox.BorderSizePixel = 1
+        checkbox.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        checkbox.Text = ""
+        checkbox.AutoButtonColor = false
+        checkbox.Parent = container
+        
+        local checkmark = Instance.new("TextLabel")
+        checkmark.Size = UDim2.new(1, 0, 1, 0)
+        checkmark.BackgroundTransparency = 1
+        checkmark.Text = ""
+        checkmark.Font = Enum.Font.GothamBlack
+        checkmark.TextSize = 16
+        checkmark.TextColor3 = Color3.fromRGB(255, 255, 255)
+        checkmark.Parent = checkbox
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -30, 0, 30)
+        label.Position = UDim2.new(0, 30, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 14
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextStrokeTransparency = 1
+        label.Parent = container
+        
+        checkbox.MouseButton1Click:Connect(function()
+            VisualModule.Settings[settingKey] = not VisualModule.Settings[settingKey]
+            checkmark.Text = VisualModule.Settings[settingKey] and "✓" or ""
+            lastUpdateTime = 0
+            pcall(updateAllESP)
+        end)
+    end
+    
+    local function createToggleButton(name, yPos)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -20, 0, 50)
+        container.Position = UDim2.new(0, 10, 0, yPos)
+        container.BackgroundTransparency = 1
+        container.Parent = visualContent
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.4, -10, 0, 40)
+        label.Position = UDim2.new(0, 0, 0, 5)
+        label.BackgroundTransparency = 1
+        label.Text = name
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 16
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextStrokeTransparency = 1
+        label.Parent = container
+        
+        local toggleButton = Instance.new("TextButton")
+        toggleButton.Size = UDim2.new(0, 140, 0, 40)
+        toggleButton.Position = UDim2.new(1, -140, 0, 5)
+        toggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+        toggleButton.BackgroundTransparency = 0
+        toggleButton.BorderSizePixel = 0
+        toggleButton.Text = "DISABLED"
+        toggleButton.Font = Enum.Font.GothamBlack
+        toggleButton.TextSize = 14
+        toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleButton.TextStrokeTransparency = 1
+        toggleButton.AutoButtonColor = false
+        toggleButton.Parent = container
+        
+        espToggleButton = toggleButton
+        
+        toggleButton.MouseButton1Click:Connect(function()
+            local newState = not VisualModule.Settings.Enabled
+            toggleESP(newState)
+            
+            if VisualModule.Settings.Enabled then
+                toggleButton.BackgroundColor3 = Color3.fromRGB(30, 144, 255)
+                toggleButton.Text = "ENABLED"
+            else
+                toggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+                toggleButton.Text = "DISABLED"
+            end
+        end)
+    end
+    
+    createToggleButton("ESP Types", 10)
+    createCheckbox("Box", "Box", 70)
+    createCheckbox("Name", "Name", 110)
+    createCheckbox("Type", "Type", 150)
+    createCheckbox("Team check", "TeamCheck", 190)
+    createCheckbox("Health", "Health", 230)
+    
+    visualContent.CanvasSize = UDim2.new(0, 0, 0, 280)
+end
+
+function VisualModule.Cleanup()
+    if espUpdateConnection then
+        espUpdateConnection:Disconnect()
+    end
+    for player, data in pairs(ESPObjects) do
+        if data.folder then data.folder:Destroy() end
+    end
+    ESPObjects = {}
+end
+
+Players.PlayerAdded:Connect(function(player)
+    task.wait(1)
+    if VisualModule.Settings.Enabled then
+        createESP(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if ESPObjects[player] then
+        if ESPObjects[player].folder then
+            ESPObjects[player].folder:Destroy()
+        end
+        ESPObjects[player] = nil
+    end
+end)
+
+return VisualModule
