@@ -1,0 +1,335 @@
+-- Roblox Executor GUI Script with Modular Tabs
+-- Main GUI that loads tab modules from GitHub
+
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+-- GitHub Raw URLs for modules (REPLACE THESE WITH YOUR ACTUAL GITHUB RAW URLS)
+local ModuleURLs = {
+    Visual = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/esp-module.lua",
+    Combat = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/combat-module.lua",
+    Player = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/player-module.lua",
+    Misc = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/misc-module.lua",
+    Settings = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/settings-module.lua"
+}
+
+-- Destroy existing GUI if it exists
+for _, gui in pairs(CoreGui:GetChildren()) do
+    if gui.Name:match("^ExecutorGui_") then
+        gui:Destroy()
+    end
+end
+
+-- Create ScreenGui in CoreGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ExecutorGui_" .. tostring(math.random(1000, 9999))
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = CoreGui
+
+-- Loaded modules storage
+local LoadedModules = {}
+local ActiveModule = nil
+
+-- Create main frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainContainer"
+mainFrame.Size = UDim2.new(0, 700, 0, 450)
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BackgroundTransparency = 0.5
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Make draggable
+local dragging
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(255, 255, 255)
+mainStroke.Thickness = 1
+mainStroke.Transparency = 0
+mainStroke.Parent = mainFrame
+
+local header = Instance.new("TextLabel")
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 50)
+header.Position = UDim2.new(0, 0, 0, 0)
+header.BackgroundTransparency = 1
+header.Text = "EXECUTOR"
+header.Font = Enum.Font.GothamBlack
+header.TextSize = 28
+header.TextColor3 = Color3.fromRGB(255, 255, 255)
+header.TextStrokeTransparency = 1
+header.Parent = mainFrame
+
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.Size = UDim2.new(0, 40, 0, 40)
+closeButton.Position = UDim2.new(1, -45, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+closeButton.BackgroundTransparency = 0
+closeButton.BorderSizePixel = 0
+closeButton.Text = "X"
+closeButton.Font = Enum.Font.GothamBlack
+closeButton.TextSize = 20
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Parent = mainFrame
+
+local closeStroke = Instance.new("UIStroke")
+closeStroke.Color = Color3.fromRGB(255, 255, 255)
+closeStroke.Thickness = 1
+closeStroke.Transparency = 0
+closeStroke.Parent = closeButton
+
+local sidebar = Instance.new("Frame")
+sidebar.Name = "Sidebar"
+sidebar.Size = UDim2.new(0, 150, 1, -70)
+sidebar.Position = UDim2.new(0, 10, 0, 60)
+sidebar.BackgroundTransparency = 1
+sidebar.BorderSizePixel = 0
+sidebar.Parent = mainFrame
+
+local contentArea = Instance.new("Frame")
+contentArea.Name = "ContentArea"
+contentArea.Size = UDim2.new(1, -180, 1, -70)
+contentArea.Position = UDim2.new(0, 170, 0, 60)
+contentArea.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+contentArea.BackgroundTransparency = 0.7
+contentArea.BorderSizePixel = 0
+contentArea.Parent = mainFrame
+
+local contentStroke = Instance.new("UIStroke")
+contentStroke.Color = Color3.fromRGB(255, 255, 255)
+contentStroke.Thickness = 1
+contentStroke.Transparency = 0
+contentStroke.Parent = contentArea
+
+-- Loading indicator
+local loadingLabel = Instance.new("TextLabel")
+loadingLabel.Name = "LoadingLabel"
+loadingLabel.Size = UDim2.new(1, 0, 1, 0)
+loadingLabel.BackgroundTransparency = 1
+loadingLabel.Text = "Select a tab to load"
+loadingLabel.Font = Enum.Font.GothamBold
+loadingLabel.TextSize = 18
+loadingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+loadingLabel.TextStrokeTransparency = 1
+loadingLabel.Visible = true
+loadingLabel.Parent = contentArea
+
+-- Function to load module from GitHub
+local function loadModule(moduleName, url)
+    if LoadedModules[moduleName] then
+        return LoadedModules[moduleName]
+    end
+    
+    loadingLabel.Text = "Loading " .. moduleName .. "..."
+    loadingLabel.Visible = true
+    
+    local success, result = pcall(function()
+        return game:HttpGet(url)
+    end)
+    
+    if success then
+        local moduleFunc, err = loadstring(result)
+        if moduleFunc then
+            local module = moduleFunc()
+            LoadedModules[moduleName] = module
+            loadingLabel.Visible = false
+            return module
+        else
+            loadingLabel.Text = "Error loading " .. moduleName .. ": " .. tostring(err)
+            return nil
+        end
+    else
+        loadingLabel.Text = "Failed to download " .. moduleName
+        return nil
+    end
+end
+
+-- Function to show module UI
+local function showModuleUI(moduleName)
+    -- Hide loading label
+    loadingLabel.Visible = false
+    
+    -- Clear content area
+    for _, child in pairs(contentArea:GetChildren()) do
+        if child.Name ~= "LoadingLabel" and not child:IsA("UIStroke") then
+            child:Destroy()
+        end
+    end
+    
+    -- Load and initialize module
+    local url = ModuleURLs[moduleName]
+    if not url then
+        loadingLabel.Text = moduleName .. " module not configured"
+        loadingLabel.Visible = true
+        return
+    end
+    
+    local module = loadModule(moduleName, url)
+    if module and module.CreateUI then
+        module.CreateUI(contentArea)
+        ActiveModule = module
+    end
+end
+
+local categories = {
+    {name = "Combat", color = Color3.fromRGB(70, 70, 70), borderColor = Color3.fromRGB(78, 78, 78), decalId = "rbxassetid://136966049937099"},
+    {name = "Visual", color = Color3.fromRGB(68, 67, 94), borderColor = Color3.fromRGB(159, 156, 255), decalId = "rbxassetid://98889882164891"},
+    {name = "Player", color = Color3.fromRGB(67, 23, 23), borderColor = Color3.fromRGB(255, 228, 228), decalId = "rbxassetid://17138239708"},
+    {name = "Misc", color = Color3.fromRGB(132, 103, 54), borderColor = Color3.fromRGB(255, 241, 217), decalId = "rbxassetid://8843448894"},
+    {name = "Settings", color = Color3.fromRGB(120, 124, 130), borderColor = Color3.fromRGB(216, 229, 243), decalId = "rbxassetid://103601862906577"}
+}
+
+local selectedButton = nil
+local clickDebounce = false
+
+local function createSidebarButton(name, color, borderColor, decalId, position)
+    local button = Instance.new("TextButton")
+    button.Name = name .. "Button"
+    button.Size = UDim2.new(1, -20, 0, 60)
+    button.Position = UDim2.new(0, 10, 0, position)
+    button.BackgroundColor3 = color
+    button.BackgroundTransparency = 0.3
+    button.BorderSizePixel = 1
+    button.BorderColor3 = borderColor
+    button.Text = ""
+    button.Font = Enum.Font.GothamBlack
+    button.TextSize = 16
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextStrokeTransparency = 1
+    button.AutoButtonColor = false
+    button.Parent = sidebar
+    
+    local imageLabel = Instance.new("ImageLabel")
+    imageLabel.Name = "DecalBackground"
+    imageLabel.Size = UDim2.new(1, 0, 1, 0)
+    imageLabel.Position = UDim2.new(0, 0, 0, 0)
+    imageLabel.BackgroundTransparency = 1
+    imageLabel.Image = decalId
+    imageLabel.ScaleType = Enum.ScaleType.Stretch
+    imageLabel.ImageTransparency = 0.99
+    imageLabel.Parent = button
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Name = "ButtonText"
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.Position = UDim2.new(0, 0, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = name:upper()
+    textLabel.Font = Enum.Font.GothamBlack
+    textLabel.TextSize = 16
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextStrokeTransparency = 1
+    textLabel.Parent = button
+    
+    button.MouseButton1Click:Connect(function()
+        if clickDebounce then return end
+        clickDebounce = true
+        
+        showModuleUI(name)
+        
+        for _, btn in pairs(sidebar:GetChildren()) do
+            if btn:IsA("TextButton") then
+                btn.BackgroundTransparency = 0.3
+                local img = btn:FindFirstChild("DecalBackground")
+                if img then
+                    img.ImageTransparency = 0.75
+                end
+            end
+        end
+        
+        button.BackgroundTransparency = 0.1
+        imageLabel.ImageTransparency = 0.5
+        selectedButton = button
+        
+        wait(0.2)
+        clickDebounce = false
+    end)
+    
+    button.MouseEnter:Connect(function()
+        if button ~= selectedButton then
+            local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local tween = TweenService:Create(button, tweenInfo, {BackgroundTransparency = 0.15})
+            tween:Play()
+            local imageTween = TweenService:Create(imageLabel, tweenInfo, {ImageTransparency = 0.6})
+            imageTween:Play()
+        end
+    end)
+    
+    button.MouseLeave:Connect(function()
+        if button ~= selectedButton then
+            local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local tween = TweenService:Create(button, tweenInfo, {BackgroundTransparency = 0.3})
+            tween:Play()
+            local imageTween = TweenService:Create(imageLabel, tweenInfo, {ImageTransparency = 0.75})
+            imageTween:Play()
+        end
+    end)
+    
+    return button
+end
+
+for i, category in ipairs(categories) do
+    createSidebarButton(category.name, category.color, category.borderColor, category.decalId, (i - 1) * 70 + 10)
+end
+
+local closeDebounce = false
+closeButton.MouseButton1Click:Connect(function()
+    if closeDebounce then return end
+    closeDebounce = true
+    
+    -- Cleanup all loaded modules
+    for name, module in pairs(LoadedModules) do
+        if module.Cleanup then
+            module.Cleanup()
+        end
+    end
+    
+    screenGui:Destroy()
+end)
+
+closeButton.MouseEnter:Connect(function()
+    closeButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+end)
+
+closeButton.MouseLeave:Connect(function()
+    closeButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+end)
