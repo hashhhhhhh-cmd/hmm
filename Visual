@@ -1,10 +1,11 @@
--- Visual Module (ESP) - Auto-scaling Box ESP with Type Decals
+-- Visual Module (ESP) - 2D Box + Auto-scaling with Type Decals
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
 
 local VisualModule = {}
 VisualModule.Settings = {
@@ -59,11 +60,28 @@ local function getTeamColor(player)
     return Color3.fromRGB(255, 255, 255)
 end
 
+local function worldToScreen(position)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
+end
+
+local function createDrawing(type)
+    local drawing = Drawing.new(type)
+    return drawing
+end
+
 local function hideAllESP(player)
     if not ESPObjects[player] then return end
     local data = ESPObjects[player]
     
-    -- Hide box holder
+    -- Hide 2D box lines
+    if data.boxLines then
+        for _, line in pairs(data.boxLines) do
+            pcall(function() line.Visible = false end)
+        end
+    end
+    
+    -- Hide 3D boxes
     if data.boxHolder then
         pcall(function() 
             for _, box in pairs(data.boxHolder:GetChildren()) do
@@ -88,7 +106,7 @@ local function createBoxes(character, holder, teamColor)
         child:Destroy()
     end
     
-    -- Create box for each body part
+    -- Create box for each body part (auto-scaling)
     for _, part in ipairs(character:GetChildren()) do
         if part:IsA("BasePart") then
             local box = Instance.new("BoxHandleAdornment")
@@ -98,7 +116,7 @@ local function createBoxes(character, holder, teamColor)
             box.AlwaysOnTop = true
             box.ZIndex = 10
             box.Transparency = 0.6
-            box.Visible = true
+            box.Visible = false -- Hidden by default, 2D box is primary
             box.Parent = holder
         end
     end
@@ -112,13 +130,23 @@ local function createESP(player)
     espFolder.Name = "ESP_" .. player.Name
     espFolder.Parent = CoreGui
     
-    -- Create box holder
+    -- Create 2D box lines
+    local boxLines = {}
+    for i = 1, 4 do
+        local line = createDrawing("Line")
+        line.Thickness = 2
+        line.Visible = false
+        boxLines[i] = line
+    end
+    
+    -- Create 3D box holder (for auto-scaling backup)
     local boxHolder = Instance.new("Folder")
     boxHolder.Name = "BoxHolder"
     boxHolder.Parent = espFolder
     
     ESPObjects[player] = {
         folder = espFolder,
+        boxLines = boxLines,
         boxHolder = boxHolder
     }
 end
@@ -162,25 +190,63 @@ local function updateESP(player)
         return
     end
     
-    -- Box ESP with auto-scaling
-    if VisualModule.Settings.Box and data.boxHolder then
-        -- Check if boxes need to be created/updated
-        local needsUpdate = data.boxHolder:GetChildren()[1] == nil
+    -- 2D Box ESP (Primary)
+    if VisualModule.Settings.Box and data.boxLines then
+        local hrpPos = rootPart.Position
         
-        if needsUpdate then
+        local topLeft = hrpPos + Vector3.new(-2, 2.5, 0)
+        local topRight = hrpPos + Vector3.new(2, 2.5, 0)
+        local bottomLeft = hrpPos + Vector3.new(-2, -3, 0)
+        local bottomRight = hrpPos + Vector3.new(2, -3, 0)
+        
+        local screenTopLeft, onScreenTL = worldToScreen(topLeft)
+        local screenTopRight, onScreenTR = worldToScreen(topRight)
+        local screenBottomLeft, onScreenBL = worldToScreen(bottomLeft)
+        local screenBottomRight, onScreenBR = worldToScreen(bottomRight)
+        
+        if onScreenTL and onScreenTR and onScreenBL and onScreenBR then
             local teamColor = getTeamColor(player)
-            createBoxes(character, data.boxHolder, teamColor)
+            
+            -- Top line
+            data.boxLines[1].From = screenTopLeft
+            data.boxLines[1].To = screenTopRight
+            data.boxLines[1].Color = teamColor
+            data.boxLines[1].Visible = true
+            
+            -- Bottom line
+            data.boxLines[2].From = screenBottomLeft
+            data.boxLines[2].To = screenBottomRight
+            data.boxLines[2].Color = teamColor
+            data.boxLines[2].Visible = true
+            
+            -- Left line
+            data.boxLines[3].From = screenTopLeft
+            data.boxLines[3].To = screenBottomLeft
+            data.boxLines[3].Color = teamColor
+            data.boxLines[3].Visible = true
+            
+            -- Right line
+            data.boxLines[4].From = screenTopRight
+            data.boxLines[4].To = screenBottomRight
+            data.boxLines[4].Color = teamColor
+            data.boxLines[4].Visible = true
         else
-            -- Update visibility and color
-            local teamColor = getTeamColor(player)
-            for _, box in pairs(data.boxHolder:GetChildren()) do
-                if box:IsA("BoxHandleAdornment") then
-                    box.Color3 = teamColor
-                    box.Visible = true
-                end
+            for _, line in pairs(data.boxLines) do
+                line.Visible = false
             end
         end
+        
+        -- Ensure 3D boxes are created but hidden (for auto-scaling)
+        if data.boxHolder:GetChildren()[1] == nil then
+            local teamColor = getTeamColor(player)
+            createBoxes(character, data.boxHolder, teamColor)
+        end
     else
+        if data.boxLines then
+            for _, line in pairs(data.boxLines) do
+                pcall(function() line.Visible = false end)
+            end
+        end
         if data.boxHolder then
             for _, box in pairs(data.boxHolder:GetChildren()) do
                 pcall(function() box.Visible = false end)
@@ -303,12 +369,14 @@ local function updateESP(player)
 end
 
 local function updateAllESP()
-    local currentTime = tick()
-    if currentTime - lastUpdateTime < 10 then return end
-    lastUpdateTime = currentTime
-    
     for player, data in pairs(ESPObjects) do
         if not Players:FindFirstChild(player.Name) then
+            -- Cleanup
+            if data.boxLines then
+                for _, line in pairs(data.boxLines) do
+                    pcall(function() line:Remove() end)
+                end
+            end
             if data.folder then 
                 pcall(function() data.folder:Destroy() end)
             end
@@ -331,7 +399,7 @@ local function toggleESP(enabled)
         end
         
         if not espUpdateConnection then
-            espUpdateConnection = RunService.Heartbeat:Connect(function()
+            espUpdateConnection = RunService.RenderStepped:Connect(function()
                 pcall(updateAllESP)
             end)
         end
@@ -433,7 +501,6 @@ function VisualModule.CreateUI(parent)
             VisualModule.Settings[settingKey] = not VisualModule.Settings[settingKey]
             checkmark.Text = VisualModule.Settings[settingKey] and "✓" or ""
             
-            lastUpdateTime = 0
             for player, data in pairs(ESPObjects) do
                 pcall(function() updateESP(player) end)
             end
@@ -505,6 +572,11 @@ function VisualModule.Cleanup()
         espUpdateConnection = nil
     end
     for player, data in pairs(ESPObjects) do
+        if data.boxLines then
+            for _, line in pairs(data.boxLines) do
+                pcall(function() line:Remove() end)
+            end
+        end
         if data.folder then 
             pcall(function() data.folder:Destroy() end)
         end
@@ -514,6 +586,11 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
     if ESPObjects[player] then
+        if ESPObjects[player].boxLines then
+            for _, line in pairs(ESPObjects[player].boxLines) do
+                pcall(function() line:Remove() end)
+            end
+        end
         if ESPObjects[player].folder then
             pcall(function() ESPObjects[player].folder:Destroy() end)
         end
