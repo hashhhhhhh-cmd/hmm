@@ -1,4 +1,4 @@
--- Visual Module (ESP) - Auto-scaling Box ESP
+-- Visual Module (ESP) - Auto-scaling Box ESP with Type Decals
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -21,6 +21,16 @@ local lastUpdateTime = 0
 local espUpdateConnection = nil
 local checkboxStates = {}
 local espToggleButton = nil
+
+-- Type decal IDs
+local TypeDecals = {
+    Bomber = "rbxassetid://106785426779694",
+    Rusher = "rbxassetid://652345103",
+    Cannoner = "rbxassetid://5834509428",
+    Hunter = "rbxassetid://14244367874",
+    Gravedigger = "rbxassetid://90297495789346",
+    Gladiator = "rbxassetid://7097554699"
+}
 
 local function getPlayerType(character)
     local tools = {"Bomb", "GravediggerPickaxe", "GladiatorsSword", "Cannon", "HuntersBow", "HuntersPunch", "Dynamite"}
@@ -62,7 +72,7 @@ local function hideAllESP(player)
         end)
     end
     
-    -- Hide text labels
+    -- Hide text labels and images
     if data.folder then
         for _, child in pairs(data.folder:GetChildren()) do
             if child:IsA("BillboardGui") then
@@ -214,27 +224,26 @@ local function updateESP(player)
         end
     end
     
-    -- Type ESP - On torso, white color, lower priority
+    -- Type ESP - Show decal image on torso
     local typeLabel = data.folder:FindFirstChild("TypeLabel")
-    if VisualModule.Settings.Type then
+    local playerType = getPlayerType(character)
+    
+    if VisualModule.Settings.Type and playerType ~= "None" then
         if not typeLabel then
             typeLabel = Instance.new("BillboardGui")
             typeLabel.Name = "TypeLabel"
-            typeLabel.Size = UDim2.new(0, 200, 0, 50)
+            typeLabel.Size = UDim2.new(0, 100, 0, 100)
             typeLabel.StudsOffset = Vector3.new(0, 0, 0)
             typeLabel.AlwaysOnTop = true
             typeLabel.Parent = data.folder
             
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Name = "Text"
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            textLabel.TextStrokeTransparency = 0.5
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.TextSize = 12
-            textLabel.ZIndex = 1
-            textLabel.Parent = typeLabel
+            local imageLabel = Instance.new("ImageLabel")
+            imageLabel.Name = "TypeImage"
+            imageLabel.Size = UDim2.new(1, 0, 1, 0)
+            imageLabel.BackgroundTransparency = 1
+            imageLabel.ScaleType = Enum.ScaleType.Fit
+            imageLabel.ZIndex = 1
+            imageLabel.Parent = typeLabel
         end
         
         if torso then
@@ -244,11 +253,10 @@ local function updateESP(player)
         end
         
         typeLabel.StudsOffset = Vector3.new(0, 0, 0)
-        local textLabel = typeLabel:FindFirstChild("Text")
-        if textLabel then 
-            textLabel.Text = getPlayerType(character)
-            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            textLabel.ZIndex = 1
+        local imageLabel = typeLabel:FindFirstChild("TypeImage")
+        if imageLabel and TypeDecals[playerType] then
+            imageLabel.Image = TypeDecals[playerType]
+            imageLabel.ZIndex = 1
         end
         typeLabel.Enabled = true
     else
