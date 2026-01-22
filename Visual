@@ -1,4 +1,4 @@
--- Visual Module (ESP) - 2D Box ESP with Team Colors
+-- Visual Module (ESP) - 2D Box ESP with Adjusted Text
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -120,6 +120,7 @@ local function updateESP(player)
     
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     local humanoid = character:FindFirstChild("Humanoid")
+    local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
     
     if not rootPart or not humanoid then 
         hideAllESP(player)
@@ -145,8 +146,6 @@ local function updateESP(player)
     -- 2D Box ESP
     if VisualModule.Settings.Box and data.boxLines then
         local hrpPos = rootPart.Position
-        local headPos = hrpPos + Vector3.new(0, 2.5, 0)
-        local legPos = hrpPos - Vector3.new(0, 3, 0)
         
         local topLeft = hrpPos + Vector3.new(-2, 2.5, 0)
         local topRight = hrpPos + Vector3.new(2, 2.5, 0)
@@ -197,14 +196,14 @@ local function updateESP(player)
         end
     end
     
-    -- Name ESP
+    -- Name ESP - Higher priority, 1 stud above head
     local nameLabel = data.folder:FindFirstChild("NameLabel")
     if VisualModule.Settings.Name then
         if not nameLabel then
             nameLabel = Instance.new("BillboardGui")
             nameLabel.Name = "NameLabel"
             nameLabel.Size = UDim2.new(0, 200, 0, 50)
-            nameLabel.StudsOffset = Vector3.new(0, 3, 0)
+            nameLabel.StudsOffset = Vector3.new(0, 4, 0) -- 1 stud higher
             nameLabel.AlwaysOnTop = true
             nameLabel.Parent = data.folder
             
@@ -216,12 +215,15 @@ local function updateESP(player)
             textLabel.TextStrokeTransparency = 0.5
             textLabel.Font = Enum.Font.GothamBold
             textLabel.TextSize = 14
+            textLabel.ZIndex = 10 -- Higher priority
             textLabel.Parent = nameLabel
         end
         nameLabel.Adornee = rootPart
+        nameLabel.StudsOffset = Vector3.new(0, 4, 0) -- Update offset
         local textLabel = nameLabel:FindFirstChild("Text")
         if textLabel then 
             textLabel.Text = player.Name 
+            textLabel.ZIndex = 10
         end
         nameLabel.Enabled = true
     else
@@ -230,14 +232,14 @@ local function updateESP(player)
         end
     end
     
-    -- Type ESP
+    -- Type ESP - On torso, white color, lower priority
     local typeLabel = data.folder:FindFirstChild("TypeLabel")
     if VisualModule.Settings.Type then
         if not typeLabel then
             typeLabel = Instance.new("BillboardGui")
             typeLabel.Name = "TypeLabel"
             typeLabel.Size = UDim2.new(0, 200, 0, 50)
-            typeLabel.StudsOffset = Vector3.new(0, 2, 0)
+            typeLabel.StudsOffset = Vector3.new(0, 0, 0) -- On torso
             typeLabel.AlwaysOnTop = true
             typeLabel.Parent = data.folder
             
@@ -245,16 +247,27 @@ local function updateESP(player)
             textLabel.Name = "Text"
             textLabel.Size = UDim2.new(1, 0, 1, 0)
             textLabel.BackgroundTransparency = 1
-            textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White color
             textLabel.TextStrokeTransparency = 0.5
             textLabel.Font = Enum.Font.GothamBold
             textLabel.TextSize = 12
+            textLabel.ZIndex = 1 -- Lower priority
             textLabel.Parent = typeLabel
         end
-        typeLabel.Adornee = rootPart
+        
+        -- Attach to torso if available
+        if torso then
+            typeLabel.Adornee = torso
+        else
+            typeLabel.Adornee = rootPart
+        end
+        
+        typeLabel.StudsOffset = Vector3.new(0, 0, 0) -- Update offset
         local textLabel = typeLabel:FindFirstChild("Text")
         if textLabel then 
-            textLabel.Text = getPlayerType(character) 
+            textLabel.Text = getPlayerType(character)
+            textLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White color
+            textLabel.ZIndex = 1
         end
         typeLabel.Enabled = true
     else
@@ -263,14 +276,14 @@ local function updateESP(player)
         end
     end
     
-    -- Health ESP
+    -- Health ESP - Below name
     local healthLabel = data.folder:FindFirstChild("HealthLabel")
     if VisualModule.Settings.Health then
         if not healthLabel then
             healthLabel = Instance.new("BillboardGui")
             healthLabel.Name = "HealthLabel"
             healthLabel.Size = UDim2.new(0, 200, 0, 50)
-            healthLabel.StudsOffset = Vector3.new(0, 1, 0)
+            healthLabel.StudsOffset = Vector3.new(0, 2.5, 0)
             healthLabel.AlwaysOnTop = true
             healthLabel.Parent = data.folder
             
@@ -282,12 +295,15 @@ local function updateESP(player)
             textLabel.TextStrokeTransparency = 0.5
             textLabel.Font = Enum.Font.GothamBold
             textLabel.TextSize = 12
+            textLabel.ZIndex = 5
             textLabel.Parent = healthLabel
         end
         healthLabel.Adornee = rootPart
+        healthLabel.StudsOffset = Vector3.new(0, 2.5, 0)
         local textLabel = healthLabel:FindFirstChild("Text")
         if textLabel then 
-            textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) 
+            textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+            textLabel.ZIndex = 5
         end
         healthLabel.Enabled = true
     else
