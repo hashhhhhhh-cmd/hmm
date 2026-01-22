@@ -1,4 +1,4 @@
--- Visual Module (ESP) - 2D Box + Health Bar
+-- Visual Module (ESP) - 2D Box + Health Bar with Wipe Button
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -68,6 +68,42 @@ end
 local function createDrawing(type)
     local drawing = Drawing.new(type)
     return drawing
+end
+
+local function wipeAllESP()
+    -- Remove all ESP folders from CoreGui
+    for _, obj in pairs(CoreGui:GetChildren()) do
+        if obj:IsA("Folder") and obj.Name:match("^ESP") then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+    
+    -- Clear all drawing objects
+    for player, data in pairs(ESPObjects) do
+        if data.boxLines then
+            for _, line in pairs(data.boxLines) do
+                pcall(function() line:Remove() end)
+            end
+        end
+        if data.healthBarBg then
+            pcall(function() data.healthBarBg:Remove() end)
+        end
+        if data.healthBarFill then
+            pcall(function() data.healthBarFill:Remove() end)
+        end
+    end
+    
+    -- Clear ESPObjects table
+    ESPObjects = {}
+    
+    -- Temporarily disable ESP
+    VisualModule.Settings.Enabled = false
+    
+    -- Update toggle button to show DISABLED
+    if espToggleButton then
+        espToggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+        espToggleButton.Text = "DISABLED"
+    end
 end
 
 local function hideAllESP(player)
@@ -147,7 +183,7 @@ local function createESP(player)
         boxLines[i] = line
     end
     
-    -- Create health bar background (black)
+    -- Create health bar background (black outline)
     local healthBarBg = createDrawing("Line")
     healthBarBg.Thickness = 5
     healthBarBg.Color = Color3.fromRGB(0, 0, 0)
@@ -253,28 +289,29 @@ local function updateESP(player)
             data.boxLines[4].Color = teamColor
             data.boxLines[4].Visible = true
             
-            -- Health bar (to the right of box)
+            -- Health bar (using screen positions from box)
             if VisualModule.Settings.Health and data.healthBarBg and data.healthBarFill then
                 local healthPercent = humanoid.Health / humanoid.MaxHealth
-                local barHeight = screenBottomRight.Y - screenTopRight.Y
                 
-                -- Health bar position (5 pixels to the right of box)
+                -- Calculate health bar position (5 pixels to the right of box)
                 local barX = screenTopRight.X + 5
                 local barTop = screenTopRight.Y
                 local barBottom = screenBottomRight.Y
+                local barHeight = barBottom - barTop
                 
-                -- Background bar (full height)
+                -- Background bar (full height, black outline)
                 data.healthBarBg.From = Vector2.new(barX, barTop)
                 data.healthBarBg.To = Vector2.new(barX, barBottom)
                 data.healthBarBg.Visible = true
                 
-                -- Health fill bar (scaled by health percentage)
-                local fillBottom = barTop + (barHeight * (1 - healthPercent))
+                -- Health fill bar (scaled by health percentage from bottom up)
+                local fillHeight = barHeight * healthPercent
+                local fillTop = barBottom - fillHeight
                 data.healthBarFill.From = Vector2.new(barX, barBottom)
-                data.healthBarFill.To = Vector2.new(barX, fillBottom)
+                data.healthBarFill.To = Vector2.new(barX, fillTop)
                 data.healthBarFill.Visible = true
                 
-                -- Color based on health
+                -- Color based on health percentage
                 if healthPercent > 0.6 then
                     data.healthBarFill.Color = Color3.fromRGB(0, 255, 0) -- Green
                 elseif healthPercent > 0.3 then
@@ -589,14 +626,45 @@ function VisualModule.CreateUI(parent)
         end)
     end
     
+    -- Wipe Button
+    local function createWipeButton(yPos)
+        local wipeButton = Instance.new("TextButton")
+        wipeButton.Size = UDim2.new(1, -20, 0, 40)
+        wipeButton.Position = UDim2.new(0, 10, 0, yPos)
+        wipeButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        wipeButton.BackgroundTransparency = 0
+        wipeButton.BorderSizePixel = 1
+        wipeButton.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        wipeButton.Text = "WIPE ESP"
+        wipeButton.Font = Enum.Font.GothamBlack
+        wipeButton.TextSize = 14
+        wipeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        wipeButton.TextStrokeTransparency = 1
+        wipeButton.AutoButtonColor = false
+        wipeButton.Parent = visualContent
+        
+        wipeButton.MouseButton1Click:Connect(function()
+            wipeAllESP()
+        end)
+        
+        wipeButton.MouseEnter:Connect(function()
+            wipeButton.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+        end)
+        
+        wipeButton.MouseLeave:Connect(function()
+            wipeButton.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        end)
+    end
+    
     createToggleButton("ESP Types", 10)
     createCheckbox("Box", "Box", 70)
     createCheckbox("Name", "Name", 110)
     createCheckbox("Type", "Type", 150)
     createCheckbox("Team check", "TeamCheck", 190)
     createCheckbox("Health", "Health", 230)
+    createWipeButton(270)
     
-    visualContent.CanvasSize = UDim2.new(0, 0, 0, 280)
+    visualContent.CanvasSize = UDim2.new(0, 0, 0, 330)
 end
 
 function VisualModule.Cleanup()
