@@ -1,4 +1,4 @@
--- Visual Module (ESP) - Host on GitHub
+-- Visual Module (ESP) - Fixed Version (No Errors)
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -42,14 +42,17 @@ local function getPlayerType(character)
     return "None"
 end
 
-local function hideESP(player)
+local function hideAllESP(player)
     if not ESPObjects[player] then return end
     local folder = ESPObjects[player].folder
     if not folder then return end
     
+    -- Hide all ESP elements safely
     for _, child in pairs(folder:GetChildren()) do
-        if child:IsA("GuiObject") or child:IsA("BoxHandleAdornment") or child:IsA("BillboardGui") then
-            child.Visible = false
+        if child:IsA("BoxHandleAdornment") then
+            pcall(function() child.Visible = false end)
+        elseif child:IsA("BillboardGui") then
+            pcall(function() child.Enabled = false end)
         end
     end
 end
@@ -67,32 +70,43 @@ end
 
 local function updateESP(player)
     if not ESPObjects[player] then return end
+    
+    -- If ESP is disabled entirely, hide everything
     if not VisualModule.Settings.Enabled then 
-        hideESP(player)
+        hideAllESP(player)
         return 
     end
     
     local character = player.Character
     if not character then 
-        hideESP(player)
+        hideAllESP(player)
         return 
     end
     
     local hrp = character:FindFirstChild("HumanoidRootPart")
     local humanoid = character:FindFirstChild("Humanoid")
     if not hrp or not humanoid then 
-        hideESP(player)
+        hideAllESP(player)
         return 
     end
     
     local espFolder = ESPObjects[player].folder
     if not espFolder then return end
     
-    if VisualModule.Settings.TeamCheck and player.Team and Players.LocalPlayer.Team and player.Team == Players.LocalPlayer.Team then
-        hideESP(player)
+    -- Team Check - hide all ESP if same team
+    local shouldHide = false
+    if VisualModule.Settings.TeamCheck then
+        if player.Team and Players.LocalPlayer.Team and player.Team == Players.LocalPlayer.Team then
+            shouldHide = true
+        end
+    end
+    
+    if shouldHide then
+        hideAllESP(player)
         return
     end
     
+    -- Box ESP
     local box = espFolder:FindFirstChild("Box")
     if VisualModule.Settings.Box then
         if not box then
@@ -108,9 +122,12 @@ local function updateESP(player)
         box.Transparency = 0.5
         box.Visible = true
     else
-        if box then box.Visible = false end
+        if box then 
+            pcall(function() box.Visible = false end)
+        end
     end
     
+    -- Name ESP
     local nameLabel = espFolder:FindFirstChild("NameLabel")
     if VisualModule.Settings.Name then
         if not nameLabel then
@@ -133,12 +150,17 @@ local function updateESP(player)
         end
         nameLabel.Adornee = hrp
         local textLabel = nameLabel:FindFirstChild("Text")
-        if textLabel then textLabel.Text = player.Name end
-        nameLabel.Visible = true
+        if textLabel then 
+            textLabel.Text = player.Name 
+        end
+        nameLabel.Enabled = true
     else
-        if nameLabel then nameLabel.Visible = false end
+        if nameLabel then 
+            pcall(function() nameLabel.Enabled = false end)
+        end
     end
     
+    -- Type ESP
     local typeLabel = espFolder:FindFirstChild("TypeLabel")
     if VisualModule.Settings.Type then
         if not typeLabel then
@@ -161,12 +183,17 @@ local function updateESP(player)
         end
         typeLabel.Adornee = hrp
         local textLabel = typeLabel:FindFirstChild("Text")
-        if textLabel then textLabel.Text = getPlayerType(character) end
-        typeLabel.Visible = true
+        if textLabel then 
+            textLabel.Text = getPlayerType(character) 
+        end
+        typeLabel.Enabled = true
     else
-        if typeLabel then typeLabel.Visible = false end
+        if typeLabel then 
+            pcall(function() typeLabel.Enabled = false end)
+        end
     end
     
+    -- Health ESP
     local healthLabel = espFolder:FindFirstChild("HealthLabel")
     if VisualModule.Settings.Health then
         if not healthLabel then
@@ -189,10 +216,14 @@ local function updateESP(player)
         end
         healthLabel.Adornee = hrp
         local textLabel = healthLabel:FindFirstChild("Text")
-        if textLabel then textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) end
-        healthLabel.Visible = true
+        if textLabel then 
+            textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) 
+        end
+        healthLabel.Enabled = true
     else
-        if healthLabel then healthLabel.Visible = false end
+        if healthLabel then 
+            pcall(function() healthLabel.Enabled = false end)
+        end
     end
 end
 
@@ -203,7 +234,9 @@ local function updateAllESP()
     
     for player, data in pairs(ESPObjects) do
         if not Players:FindFirstChild(player.Name) then
-            if data.folder then data.folder:Destroy() end
+            if data.folder then 
+                pcall(function() data.folder:Destroy() end)
+            end
             ESPObjects[player] = nil
         else
             pcall(function() updateESP(player) end)
@@ -228,8 +261,9 @@ local function toggleESP(enabled)
             end)
         end
     else
+        -- Hide all ESP when disabled
         for player, data in pairs(ESPObjects) do
-            hideESP(player)
+            hideAllESP(player)
         end
         
         if espUpdateConnection then
@@ -292,8 +326,12 @@ function VisualModule.CreateUI(parent)
         checkbox.MouseButton1Click:Connect(function()
             VisualModule.Settings[settingKey] = not VisualModule.Settings[settingKey]
             checkmark.Text = VisualModule.Settings[settingKey] and "✓" or ""
+            
+            -- Force immediate update
             lastUpdateTime = 0
-            pcall(updateAllESP)
+            for player, data in pairs(ESPObjects) do
+                pcall(function() updateESP(player) end)
+            end
         end)
     end
     
@@ -359,9 +397,12 @@ end
 function VisualModule.Cleanup()
     if espUpdateConnection then
         espUpdateConnection:Disconnect()
+        espUpdateConnection = nil
     end
     for player, data in pairs(ESPObjects) do
-        if data.folder then data.folder:Destroy() end
+        if data.folder then 
+            pcall(function() data.folder:Destroy() end)
+        end
     end
     ESPObjects = {}
 end
@@ -376,7 +417,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     if ESPObjects[player] then
         if ESPObjects[player].folder then
-            ESPObjects[player].folder:Destroy()
+            pcall(function() ESPObjects[player].folder:Destroy() end)
         end
         ESPObjects[player] = nil
     end
