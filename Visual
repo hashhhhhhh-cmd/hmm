@@ -1,4 +1,4 @@
--- Visual Module (ESP) - 2D Box + Auto-scaling with Type Decals
+-- Visual Module (ESP) - 2D Box + Health Bar
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -81,6 +81,14 @@ local function hideAllESP(player)
         end
     end
     
+    -- Hide health bar
+    if data.healthBarBg then
+        pcall(function() data.healthBarBg.Visible = false end)
+    end
+    if data.healthBarFill then
+        pcall(function() data.healthBarFill.Visible = false end)
+    end
+    
     -- Hide 3D boxes
     if data.boxHolder then
         pcall(function() 
@@ -116,7 +124,7 @@ local function createBoxes(character, holder, teamColor)
             box.AlwaysOnTop = true
             box.ZIndex = 10
             box.Transparency = 0.6
-            box.Visible = false -- Hidden by default, 2D box is primary
+            box.Visible = false
             box.Parent = holder
         end
     end
@@ -139,7 +147,19 @@ local function createESP(player)
         boxLines[i] = line
     end
     
-    -- Create 3D box holder (for auto-scaling backup)
+    -- Create health bar background (black)
+    local healthBarBg = createDrawing("Line")
+    healthBarBg.Thickness = 5
+    healthBarBg.Color = Color3.fromRGB(0, 0, 0)
+    healthBarBg.Visible = false
+    
+    -- Create health bar fill (green)
+    local healthBarFill = createDrawing("Line")
+    healthBarFill.Thickness = 3
+    healthBarFill.Color = Color3.fromRGB(0, 255, 0)
+    healthBarFill.Visible = false
+    
+    -- Create 3D box holder
     local boxHolder = Instance.new("Folder")
     boxHolder.Name = "BoxHolder"
     boxHolder.Parent = espFolder
@@ -147,6 +167,8 @@ local function createESP(player)
     ESPObjects[player] = {
         folder = espFolder,
         boxLines = boxLines,
+        healthBarBg = healthBarBg,
+        healthBarFill = healthBarFill,
         boxHolder = boxHolder
     }
 end
@@ -190,7 +212,7 @@ local function updateESP(player)
         return
     end
     
-    -- 2D Box ESP (Primary)
+    -- 2D Box ESP
     if VisualModule.Settings.Box and data.boxLines then
         local hrpPos = rootPart.Position
         
@@ -230,13 +252,49 @@ local function updateESP(player)
             data.boxLines[4].To = screenBottomRight
             data.boxLines[4].Color = teamColor
             data.boxLines[4].Visible = true
+            
+            -- Health bar (to the right of box)
+            if VisualModule.Settings.Health and data.healthBarBg and data.healthBarFill then
+                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                local barHeight = screenBottomRight.Y - screenTopRight.Y
+                
+                -- Health bar position (5 pixels to the right of box)
+                local barX = screenTopRight.X + 5
+                local barTop = screenTopRight.Y
+                local barBottom = screenBottomRight.Y
+                
+                -- Background bar (full height)
+                data.healthBarBg.From = Vector2.new(barX, barTop)
+                data.healthBarBg.To = Vector2.new(barX, barBottom)
+                data.healthBarBg.Visible = true
+                
+                -- Health fill bar (scaled by health percentage)
+                local fillBottom = barTop + (barHeight * (1 - healthPercent))
+                data.healthBarFill.From = Vector2.new(barX, barBottom)
+                data.healthBarFill.To = Vector2.new(barX, fillBottom)
+                data.healthBarFill.Visible = true
+                
+                -- Color based on health
+                if healthPercent > 0.6 then
+                    data.healthBarFill.Color = Color3.fromRGB(0, 255, 0) -- Green
+                elseif healthPercent > 0.3 then
+                    data.healthBarFill.Color = Color3.fromRGB(255, 255, 0) -- Yellow
+                else
+                    data.healthBarFill.Color = Color3.fromRGB(255, 0, 0) -- Red
+                end
+            else
+                if data.healthBarBg then data.healthBarBg.Visible = false end
+                if data.healthBarFill then data.healthBarFill.Visible = false end
+            end
         else
             for _, line in pairs(data.boxLines) do
                 line.Visible = false
             end
+            if data.healthBarBg then data.healthBarBg.Visible = false end
+            if data.healthBarFill then data.healthBarFill.Visible = false end
         end
         
-        -- Ensure 3D boxes are created but hidden (for auto-scaling)
+        -- Ensure 3D boxes are created but hidden
         if data.boxHolder:GetChildren()[1] == nil then
             local teamColor = getTeamColor(player)
             createBoxes(character, data.boxHolder, teamColor)
@@ -247,6 +305,12 @@ local function updateESP(player)
                 pcall(function() line.Visible = false end)
             end
         end
+        if data.healthBarBg then
+            pcall(function() data.healthBarBg.Visible = false end)
+        end
+        if data.healthBarFill then
+            pcall(function() data.healthBarFill.Visible = false end)
+        end
         if data.boxHolder then
             for _, box in pairs(data.boxHolder:GetChildren()) do
                 pcall(function() box.Visible = false end)
@@ -254,7 +318,7 @@ local function updateESP(player)
         end
     end
     
-    -- Name ESP - Higher priority, 1 stud above head
+    -- Name ESP
     local nameLabel = data.folder:FindFirstChild("NameLabel")
     if VisualModule.Settings.Name then
         if not nameLabel then
@@ -330,42 +394,6 @@ local function updateESP(player)
             pcall(function() typeLabel.Enabled = false end)
         end
     end
-    
-    -- Health ESP
-    local healthLabel = data.folder:FindFirstChild("HealthLabel")
-    if VisualModule.Settings.Health then
-        if not healthLabel then
-            healthLabel = Instance.new("BillboardGui")
-            healthLabel.Name = "HealthLabel"
-            healthLabel.Size = UDim2.new(0, 200, 0, 50)
-            healthLabel.StudsOffset = Vector3.new(0, 2.5, 0)
-            healthLabel.AlwaysOnTop = true
-            healthLabel.Parent = data.folder
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Name = "Text"
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-            textLabel.TextStrokeTransparency = 0.5
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.TextSize = 12
-            textLabel.ZIndex = 5
-            textLabel.Parent = healthLabel
-        end
-        healthLabel.Adornee = rootPart
-        healthLabel.StudsOffset = Vector3.new(0, 2.5, 0)
-        local textLabel = healthLabel:FindFirstChild("Text")
-        if textLabel then 
-            textLabel.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
-            textLabel.ZIndex = 5
-        end
-        healthLabel.Enabled = true
-    else
-        if healthLabel then 
-            pcall(function() healthLabel.Enabled = false end)
-        end
-    end
 end
 
 local function updateAllESP()
@@ -376,6 +404,12 @@ local function updateAllESP()
                 for _, line in pairs(data.boxLines) do
                     pcall(function() line:Remove() end)
                 end
+            end
+            if data.healthBarBg then
+                pcall(function() data.healthBarBg:Remove() end)
+            end
+            if data.healthBarFill then
+                pcall(function() data.healthBarFill:Remove() end)
             end
             if data.folder then 
                 pcall(function() data.folder:Destroy() end)
@@ -420,7 +454,6 @@ Players.PlayerAdded:Connect(function(player)
     player.CharacterAdded:Connect(function(character)
         task.wait(0.5)
         if VisualModule.Settings.Enabled and ESPObjects[player] then
-            -- Recreate boxes for new character
             local teamColor = getTeamColor(player)
             createBoxes(character, ESPObjects[player].boxHolder, teamColor)
             pcall(function() updateESP(player) end)
@@ -577,6 +610,12 @@ function VisualModule.Cleanup()
                 pcall(function() line:Remove() end)
             end
         end
+        if data.healthBarBg then
+            pcall(function() data.healthBarBg:Remove() end)
+        end
+        if data.healthBarFill then
+            pcall(function() data.healthBarFill:Remove() end)
+        end
         if data.folder then 
             pcall(function() data.folder:Destroy() end)
         end
@@ -590,6 +629,12 @@ Players.PlayerRemoving:Connect(function(player)
             for _, line in pairs(ESPObjects[player].boxLines) do
                 pcall(function() line:Remove() end)
             end
+        end
+        if ESPObjects[player].healthBarBg then
+            pcall(function() ESPObjects[player].healthBarBg:Remove() end)
+        end
+        if ESPObjects[player].healthBarFill then
+            pcall(function() ESPObjects[player].healthBarFill:Remove() end)
         end
         if ESPObjects[player].folder then
             pcall(function() ESPObjects[player].folder:Destroy() end)
