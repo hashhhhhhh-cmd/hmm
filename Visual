@@ -1,4 +1,4 @@
--- Visual Module (ESP) - 2D Box + Health Bar with Wipe Button
+-- Visual Module (ESP) - 2D Box + Health Bar + Object ESP
 -- This creates the UI for the Visual tab
 
 local Players = game:GetService("Players")
@@ -6,6 +6,7 @@ local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
+local Workspace = game:GetService("Workspace")
 
 local VisualModule = {}
 VisualModule.Settings = {
@@ -14,11 +15,18 @@ VisualModule.Settings = {
     Name = false,
     Type = false,
     TeamCheck = false,
-    Health = false
+    Health = false,
+    GoldBlock = false,
+    Grave = false
 }
 
 local ESPObjects = {}
+local ObjectESP = {
+    GoldBlocks = {},
+    Graves = {}
+}
 local lastUpdateTime = 0
+local lastObjectUpdateTime = 0
 local espUpdateConnection = nil
 local checkboxStates = {}
 local espToggleButton = nil
@@ -31,6 +39,12 @@ local TypeDecals = {
     Hunter = "rbxassetid://14244367874",
     Gravedigger = "rbxassetid://90297495789346",
     Gladiator = "rbxassetid://7097554699"
+}
+
+-- Object ESP Decals
+local ObjectDecals = {
+    GoldBlock = "rbxassetid://8843448894",
+    Grave = "rbxassetid://186098647"
 }
 
 local function getPlayerType(character)
@@ -93,8 +107,22 @@ local function wipeAllESP()
         end
     end
     
-    -- Clear ESPObjects table
+    -- Clear object ESP
+    for _, data in pairs(ObjectESP.GoldBlocks) do
+        if data.billboard then
+            pcall(function() data.billboard:Destroy() end)
+        end
+    end
+    for _, data in pairs(ObjectESP.Graves) do
+        if data.billboard then
+            pcall(function() data.billboard:Destroy() end)
+        end
+    end
+    
+    -- Clear tables
     ESPObjects = {}
+    ObjectESP.GoldBlocks = {}
+    ObjectESP.Graves = {}
     
     -- Temporarily disable ESP
     VisualModule.Settings.Enabled = false
@@ -103,6 +131,115 @@ local function wipeAllESP()
     if espToggleButton then
         espToggleButton.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
         espToggleButton.Text = "DISABLED"
+    end
+end
+
+local function createObjectESP(object, espType, decalId)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ObjectESP"
+    billboard.Size = UDim2.new(0, 100, 0, 100)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Adornee = object
+    billboard.Parent = CoreGui
+    
+    local imageLabel = Instance.new("ImageLabel")
+    imageLabel.Size = UDim2.new(1, 0, 1, 0)
+    imageLabel.BackgroundTransparency = 1
+    imageLabel.Image = decalId
+    imageLabel.ScaleType = Enum.ScaleType.Fit
+    imageLabel.Parent = billboard
+    
+    return billboard
+end
+
+local function updateObjectESP()
+    local currentTime = tick()
+    if currentTime - lastObjectUpdateTime < 10 then return end
+    lastObjectUpdateTime = currentTime
+    
+    -- Update Gold Block ESP
+    if VisualModule.Settings.GoldBlock then
+        local blocks = Workspace:FindFirstChild("Blocks")
+        if blocks then
+            -- Track existing gold blocks
+            local foundBlocks = {}
+            
+            for _, block in pairs(blocks:GetChildren()) do
+                if block:IsA("Model") and block.Name == "GoldBlock" then
+                    foundBlocks[block] = true
+                    
+                    -- Create ESP if doesn't exist
+                    if not ObjectESP.GoldBlocks[block] then
+                        local billboard = createObjectESP(block, "GoldBlock", ObjectDecals.GoldBlock)
+                        ObjectESP.GoldBlocks[block] = {
+                            object = block,
+                            billboard = billboard
+                        }
+                    end
+                end
+            end
+            
+            -- Remove ESP for blocks that no longer exist
+            for block, data in pairs(ObjectESP.GoldBlocks) do
+                if not foundBlocks[block] or not block.Parent then
+                    if data.billboard then
+                        pcall(function() data.billboard:Destroy() end)
+                    end
+                    ObjectESP.GoldBlocks[block] = nil
+                end
+            end
+        end
+    else
+        -- Hide all gold block ESP
+        for block, data in pairs(ObjectESP.GoldBlocks) do
+            if data.billboard then
+                pcall(function() data.billboard:Destroy() end)
+            end
+        end
+        ObjectESP.GoldBlocks = {}
+    end
+    
+    -- Update Grave ESP
+    if VisualModule.Settings.Grave then
+        local graves = Workspace:FindFirstChild("Graves")
+        if graves then
+            -- Track existing graves
+            local foundGraves = {}
+            
+            for _, grave in pairs(graves:GetChildren()) do
+                if grave:IsA("MeshPart") and grave.Name == "Grave" then
+                    foundGraves[grave] = true
+                    
+                    -- Create ESP if doesn't exist
+                    if not ObjectESP.Graves[grave] then
+                        local billboard = createObjectESP(grave, "Grave", ObjectDecals.Grave)
+                        ObjectESP.Graves[grave] = {
+                            object = grave,
+                            billboard = billboard
+                        }
+                    end
+                end
+            end
+            
+            -- Remove ESP for graves that no longer exist
+            for grave, data in pairs(ObjectESP.Graves) do
+                if not foundGraves[grave] or not grave.Parent then
+                    if data.billboard then
+                        pcall(function() data.billboard:Destroy() end)
+                    end
+                    ObjectESP.Graves[grave] = nil
+                end
+            end
+        end
+    else
+        -- Hide all grave ESP
+        for grave, data in pairs(ObjectESP.Graves) do
+            if data.billboard then
+                pcall(function() data.billboard:Destroy() end)
+            end
+        end
+        ObjectESP.Graves = {}
     end
 end
 
@@ -456,6 +593,9 @@ local function updateAllESP()
             pcall(function() updateESP(player) end)
         end
     end
+    
+    -- Update object ESP every frame
+    pcall(updateObjectESP)
 end
 
 local function toggleESP(enabled)
@@ -571,8 +711,14 @@ function VisualModule.CreateUI(parent)
             VisualModule.Settings[settingKey] = not VisualModule.Settings[settingKey]
             checkmark.Text = VisualModule.Settings[settingKey] and "✓" or ""
             
-            for player, data in pairs(ESPObjects) do
-                pcall(function() updateESP(player) end)
+            -- Force object ESP update
+            if settingKey == "GoldBlock" or settingKey == "Grave" then
+                lastObjectUpdateTime = 0
+                pcall(updateObjectESP)
+            else
+                for player, data in pairs(ESPObjects) do
+                    pcall(function() updateESP(player) end)
+                end
             end
         end)
     end
@@ -662,9 +808,11 @@ function VisualModule.CreateUI(parent)
     createCheckbox("Type", "Type", 150)
     createCheckbox("Team check", "TeamCheck", 190)
     createCheckbox("Health", "Health", 230)
-    createWipeButton(270)
+    createCheckbox("Gold Block", "GoldBlock", 270)
+    createCheckbox("Grave", "Grave", 310)
+    createWipeButton(350)
     
-    visualContent.CanvasSize = UDim2.new(0, 0, 0, 330)
+    visualContent.CanvasSize = UDim2.new(0, 0, 0, 410)
 end
 
 function VisualModule.Cleanup()
@@ -689,6 +837,20 @@ function VisualModule.Cleanup()
         end
     end
     ESPObjects = {}
+    
+    -- Clean object ESP
+    for _, data in pairs(ObjectESP.GoldBlocks) do
+        if data.billboard then
+            pcall(function() data.billboard:Destroy() end)
+        end
+    end
+    for _, data in pairs(ObjectESP.Graves) do
+        if data.billboard then
+            pcall(function() data.billboard:Destroy() end)
+        end
+    end
+    ObjectESP.GoldBlocks = {}
+    ObjectESP.Graves = {}
 end
 
 Players.PlayerRemoving:Connect(function(player)
